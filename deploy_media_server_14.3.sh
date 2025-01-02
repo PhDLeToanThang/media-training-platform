@@ -1,8 +1,8 @@
-# D:\Documents\GitHub\itil-helpdesk\Advanced\deploy_itsm_v10017.sh    GLPI VERSION 10.0.17  updated: 11/11/2024
-# Code Deploy itil server On-premise:
-# Install Itil 10.0.17 on Ubuntu 20.04 linux server OS:
-# GLPI is a powerful open source IT service management (ITSM) software tool designed to help you plan and easily manage your IT operations.
-# This is source code deploy for Multi-tenance for more instance ITIL - ITSM.
+# D:\Documents\GitHub\media-training-platform\deploy_media_server_14.3.sh    Avideo Platform VERSION 14.3  updated: 02/1/2025
+# Code Deploy Media server On-premise:
+# Install Avideo 14.3 on Ubuntu 24.04.06 LTS linux server OS:
+# Avideo Platform is a powerful open source Video service management (Your Tube media) software tool designed/ Upload/ LiveStreaming to help you plan and easily manage your media content or Advance or Ad operations.
+# This is source code deploy for Multi-user limit time for more functionalities video fun, happy easlisy, Ad in the TV/Desk.
 #!/bin/bash
 
 ############### Tham số cần thay đổi ở đây ###################
