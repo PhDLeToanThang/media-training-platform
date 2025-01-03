@@ -16,7 +16,7 @@ echo "Database Password: e.g: P@$$w0rd-1.22"
 read -s dbpass
 echo "phpmyadmin folder name: e.g: phpmyadmin"   # Đổi tên thư mục phpmyadmin khi add link symbol vào Website 
 read -e phpmyadmin
-echo "ITIL Folder Data: e.g: cdndata"   # Tên Thư mục chưa Data vs Cache
+echo "CDN Folder Data: e.g: cdndata"   # Tên Thư mục chưa Data vs Cache
 read -e FOLDERDATA
 echo "dbtype name: e.g: mariadb"   # Tên kiểu Database
 read -e dbtype
@@ -25,7 +25,7 @@ read -e dbhost
 echo "Your Email address fro Certbot e.g: thang@company.vn" # Địa chỉ email của bạn để quản lý CA
 read -e emailcertbot
 
-GitGLPIversion="10.0.17"
+AVideo="14.3"
 
 echo "run install? (y/n)"
 read -e run
@@ -73,13 +73,20 @@ EOF
 # Reload privilege tables now? [Y/n]:  Y
 # After you enter response for these questions, your MariaDB installation will be secured.
 
-#Step 3. Install PHP-FPM & Related modules
+# Step 3. Install Dependencies
+#AVideo uses FFmpeg to encode videos. We can easily install FFmpeg from the default Ubuntu repository.
+
+sudo apt install ffmpeg -y
+#To read and write meta information in multimedia files, we need to install the libimage-exiftool-perl package.
+sudo apt install libimage-exiftool-perl -y
+
+#Step 4. Install PHP-FPM & Related modules
 sudo apt-get install software-properties-common -y
 sudo -S add-apt-repository ppa:ondrej/php -y
 sudo apt update -y
-sudo apt install php8.3-fpm php8.3-common php-ldap php8.3-mbstring php8.3-xmlrpc php8.3-soap php8.3-gd php8.3-xml php8.3-intl php8.3-mysql php8.3-cli php8.3-mcrypt php8.3-ldap php8.3-zip php8.3-curl -y
+sudo apt install php8.3-fpm php8.3-common php8.3-json php8.3-opcache php8.3-readline php-ldap php8.3-mbstring php8.3-xmlrpc php8.3-soap php8.3-gd php8.3-xml php8.3-intl php8.3-mysql php8.3-cli php8.3-mcrypt php8.3-ldap php8.3-zip php8.3-curl -y
 
-#Open PHP-FPM config file.
+#Step 5. Open PHP-FPM config file.
 #sudo nano /etc/php/8.3/fpm/php.ini
 #Add/Update the values as shown. You may change it as per your requirement.
 # if new php.ini configure then clear sign sharp # comment
@@ -307,8 +314,41 @@ END
 
 systemctl restart php8.3-fpm.service
 
-#Step 4. Create ITIL Database
-#Log into MySQL and create database for ITIL.
+#Step 6. To fetch videos from other sites, we need to install YouTube-DL. 
+#Though it’s included in the Ubuntu repository, but it’s outdated.
+#We will install YouTube-DL from the Python Package Index, which always contains the latest version of YouTube-DL.
+sudo apt install python3-pip -y
+sudo -H pip3 install youtube-dl 
+#It’s very important that you use the latest version, or you might not be able to download videos from other sites. We can create a Cron job to automatically check and install the latest version.
+sudo crontab -e
+#Add the following line at the end of the Crontab file to try upgrading YouTube-DL daily.
+#   @daily sudo -H pip3 install --upgrade youtube-dl > /dev/null 
+
+# Nếu đã có thì bỏ qua đoạn hàm này như thế nào ?
+#Step 7. Next, edit the MariaDB default configuration file and define the innodb_file_format:
+#nano /etc/mysql/mariadb.conf.d/50-server.cnf
+#Add the following lines inside the [mysqld] section: 
+# if new php.ini configure then clear sign sharp # comment
+cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<END
+[mysqld]
+innodb_file_format = Barracuda
+innodb_file_format_max = Barracuda
+innodb_file_per_table = 1
+innodb_large_prefix = ON
+innodb_file_per_table = ON
+max_allowed_packet=128M
+innodb_default_row_format = dynamic
+
+[server]
+default-time-zone=+7:00
+
+END
+
+#Save the file then restart the MariaDB service to apply the changes.
+systemctl restart mariadb
+
+#Step 8. Create AVideo Database
+#Log into MySQL and create database for AVideo.
 # install tool mysql-workbench-community from Tonin Bolzan (tonybolzan)
 sudo snap install mysql-workbench-community
 
@@ -319,29 +359,11 @@ mysql -uroot -prootpassword -e "GRANT ALL PRIVILEGES ON ${dbname}.* TO '${dbuser
 mysql -uroot -prootpassword -e "GRANT SELECT ON mysql.time_zone_name TO '${dbuser}'@'${dbhost}';"
 mysql -uroot -prootpassword -e "FLUSH PRIVILEGES;"
 mysql -uroot -prootpassword -e "SHOW DATABASES;"
+mysql -uroot -prootpassword -e "EXIT;"
 
-# Nếu đã có thì bỏ qua đoạn hàm này như thế nào ?
-#Step 5. Next, edit the MariaDB default configuration file and define the innodb_file_format:
-#nano /etc/mysql/mariadb.conf.d/50-server.cnf
-#Add the following lines inside the [mysqld] section: 
-# if new php.ini configure then clear sign sharp # comment
-cat > /etc/mysql/mariadb.conf.d/50-server.cnf <<END
-[mysqld]
-innodb_file_format = Barracuda
-innodb_file_per_table = 1
-innodb_large_prefix = ON
-max_allowed_packet=128M
 
-[server]
-default-time-zone=+7:00
-
-END
-
-#Save the file then restart the MariaDB service to apply the changes.
-systemctl restart mariadb
-
-#Step 6. Download & Install ITIL
-#We will be using Git to install/update the ITIL Core Application 
+#Step 9. Download & Install AVideo
+#We will be using Git to install/update the AVideo Core Application 
 sudo apt install git -y
 
 cd /opt
@@ -349,33 +371,19 @@ sudo apt-get -y install wget
 #Run the following command to download Avideo package.
 #Download the Media Avideo Code and Index 
 
-
-sudo wget https://github.com/glpi-project/glpi/releases/download/$GitGLPIversion/glpi-$GitGLPIversion.tgz
+sudo git clone https://github.com/WWBN/AVideo.git
 #Change directory into the downloaded Avideo folder
 #Uncompress the downloaded the archive:
 
-tar xvf glpi-$GitGLPIversion.tgz
+cd AVideo/
+sudo git clone https://github.com/WWBN/AVideo-Encoder.git
 
-cd glpi
-#Retrieve a list of each branch available 
-#sudo git branch -a
-#Tell git which branch to track or use
-#sudo git branch --track $GitGLPIversion origin/$GitGLPIversion
-
-#if get error
-git fetch
-#Finally, Check out the ITIL version specified 
-sudo git checkout $GitGLPIversion
+sudo mv AVideo-Encoder upload
 
 #Run the following command to extract package to NGINX website root folder.
-sudo cp -R /opt/glpi /var/www/html/$FQDN
-sudo mkdir /var/www/html/$FOLDERDATA
-#Change the folder permissions.
-sudo chown -R www-data:www-data /var/www/html/$FQDN/ 
-sudo chmod -R 755 /var/www/html/$FQDN/ 
-sudo chown www-data /var/www/html/$FOLDERDATA
+sudo chown www-data:www-data /var/www/AVideo/ -R
 
-#Step 7: Finish GLPI installation
+#Step 10: Finish host config
 cat > /etc/hosts <<END
 127.0.0.1 $FQDN
 127.0.0.1 localhost
@@ -388,25 +396,9 @@ ff02::1 ip6-allnodes
 ff02::2 ip6-allrouters
 END
 
-#Visit your server IP or hostname URL on /glpi. If it is your local machine, you can use: http://127.0.0.1/glpi/install/install.php
-#On the first page, Select your language.
-#Accept License terms and click “Continue“.
-#Choose ‘Install‘ for a completely new installation of GLPI.
-#Confirm that the Checks for the compatibility of your environment with the execution of GLPI is successful.
-#Configure Database connection
-#Select glpi database to initialize.
-#Finish the other setup steps to start using GLPI.
-#You should get the login page.
-#Default logins / passwords are:
-#    glpi/glpi for the administrator account
-#    tech/tech for the technician account
-#    normal/normal for the normal account
-#    post-only/postonly for the postonly account
-# On first login, you’re asked to change the password. Please set new password before configuring GLPI. This is done under Administration > Users.
-# This marks the end of installing GLPI on Ubuntu 20.04/18.04. The next sections are about adding assets and other IT Management stuff for your 
-# infrastructure/environment. For this, please refer to the 
 
-#Step 8. Configure NGINX
+
+#Step 11. Configure NGINX
 #Them dong lenh xoa noi dung cau hinh trong file conf truoc khi dien thong tin chuan moi:
 cat > /etc/nginx/conf.d/${FQDN}.conf <<END
 END
@@ -438,12 +430,13 @@ echo '}'>> /etc/nginx/conf.d/$FQDN.conf
 
 #Save and close the file then verify the Nginx for any syntax error with the following command: 
 nginx -t
+sudo systemctl reload nginx
 
-#Step 9. Setup and Configure PhpMyAdmin
+#Step 12. Setup and Configure PhpMyAdmin
 sudo apt update -y
 sudo apt install phpmyadmin -y
 
-#Step 10. gỡ bỏ apache:
+#Step 13. gỡ bỏ apache:
 sudo service apache2 stop
 sudo apt-get purge apache2 apache2-utils apache2.2-bin apache2-common
 sudo apt-get purge apache2 apache2-utils apache2-bin apache2.2-common
@@ -457,7 +450,7 @@ sudo ln -s /usr/share/phpmyadmin /var/www/html/$FQDN/$phpmyadmin
 sudo chown -R root:root /var/lib/phpmyadmin
 sudo nginx -t
 
-#Step 11. Nâng cấp PhpmyAdmin lên version 5.2.1:
+#Step 14. Nâng cấp PhpmyAdmin lên version 5.2.1:
 sudo mv /usr/share/phpmyadmin/ /usr/share/phpmyadmin.bak
 sudo mkdir /usr/share/phpmyadmin/
 cd /usr/share/phpmyadmin/
@@ -474,7 +467,7 @@ mkdir /usr/share/phpMyAdmin/tmp   # tạo thư mục cache cho phpmyadmin
 sudo systemctl restart nginx
 systemctl restart php8.3-fpm.service
 
-#Step 12. Install Certbot
+#Step 15. Install Certbot enabling HTTPS
 sudo apt install certbot python3-certbot-nginx -y
 sudo certbot --nginx -d $FQDN --email $emailcertbot --agree-tos --redirect --hsts
 
