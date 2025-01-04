@@ -1,4 +1,4 @@
-# Phần 1: Thực hiện triển khai xây dựng ITSM - ITIL Helpdesk Server:
+# Phần 1: Thực hiện triển khai xây dựng Media - CDN Platform for ON-Premise:
 ```
 D:\Documents\GitHub\media-training-platform\deploy_media_server_14.3.sh
 Avideo Platform VERSION 14.3  updated: 02/1/2025
