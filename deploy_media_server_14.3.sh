@@ -402,31 +402,283 @@ END
 #Them dong lenh xoa noi dung cau hinh trong file conf truoc khi dien thong tin chuan moi:
 cat > /etc/nginx/conf.d/${FQDN}.conf <<END
 END
-#Next, you will need to create an Nginx virtual host configuration file to host ITIL:
+#Next, you will need to create an Nginx virtual host configuration file to host Avideo:
 #$ nano /etc/nginx/conf.d/$FQDN.conf
 echo 'server {'  >> /etc/nginx/conf.d/$FQDN.conf
-echo '    root '/var/www/html/${FQDN}';'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    index  index.php index.html index.htm;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    server_name '${FQDN}';'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    client_max_body_size 512M;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    autoindex off;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    location / {'>> /etc/nginx/conf.d/$FQDN.conf
-echo '        try_files $uri $uri/ =404;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    }'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    location /dataroot/ {'>> /etc/nginx/conf.d/$FQDN.conf
-echo '      internal;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '      alias '/var/www/html/$FOLDERDATA/';'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    }'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    location ~ [^/].php(/|$) {'>> /etc/nginx/conf.d/$FQDN.conf
-echo '        include snippets/fastcgi-php.conf;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '        fastcgi_pass unix:/run/php/php8.3-fpm.sock;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '        include fastcgi_params;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '    }'>> /etc/nginx/conf.d/$FQDN.conf
-echo '	location ~ ^/(doc|sql|setup)/{'>> /etc/nginx/conf.d/$FQDN.conf
-echo '		deny all;'>> /etc/nginx/conf.d/$FQDN.conf
-echo '	}'>> /etc/nginx/conf.d/$FQDN.conf
-echo '}'>> /etc/nginx/conf.d/$FQDN.conf
+echo '      80;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '      [::]:80;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    server_name '${FQDN}';'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    root /var/www/${FQDN}';'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    index index.php index.html index.htm;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    charset utf-8;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    client_max_body_size 2G;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    access_log  /var/log/nginx/avideo.access.log;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    error_log   /var/log/nginx/avideo.error.log;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location ~ \.php$ {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    fastcgi_split_path_info ^(.+\.php)(/.+)$;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    fastcgi_pass unix:/run/php/php8.3-fpm.sock;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    fastcgi_index index.php;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    include fastcgi_params;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    # translating Apache rewrite rules in the .htaccess file to Nginx rewrite rules'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location / {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/$ /view/ last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /bootstrap {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/bootstrap/(.+)$ /view/bootstrap/$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /js {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/js/(.+)$ /view/js/$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /css {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/css/(.+)$ /view/css/$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /img {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/img/(.+)$ /view/img/$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /page {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/page/([0-9]+)/?$ /view/?page=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /videoOnly {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/videoOnly/?$ /view/?type=video last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /audioOnly {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/audioOnly/?$ /view/?type=audio last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /download {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/downloadExternalVideo.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /downloadNow {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/downloadVideo.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /getDownloadProgress {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/downloadVideoProgress.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /about {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/about.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /contact {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/contact.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /sendEmail {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/sendEmail.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /captcha {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/getCaptcha.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /monitor {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/monitor/(.+)$ /objects/ServerMonitor/$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /cat {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/cat/([A-Za-z0-9-]+)/?$ /view/?catName=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /video {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/video/([A-Za-z0-9-_.]+)/?$ /view/?videoName=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /videoEmbeded {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/videoEmbeded/([A-Za-z0-9-_.]+)/?$ /view/videoEmbeded.php?videoName=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /upload {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/mini-upload-form/ last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /fileUpload {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/mini-upload-form/upload.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /uploadStatu {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/uploadStatus /view/mini-upload-form/videoConversionStatus.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /user {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/user.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /users {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/managerUsers.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /users.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/users.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /updateUser {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userUpdate.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /savePhoto {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userSavePhoto.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addNewUser {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /deleteUser {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userDelete.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /recoverPass {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userRecoverPass.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /saveRecoverPassword {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userRecoverPassSave.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /signUp {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/signUp.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /createUser {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userCreate.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /usersGroups {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/managerUsersGroups.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /usersGroups.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/usersGroups.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addNewUserGroups {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userGroupsAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /deleteUserGroups {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/userGroupsDelete.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /ads {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/managerAds.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addNewAd {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/video_adsAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /ads.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/video_ads.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /deleteVideoAd {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/video_adDelete.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /adClickLo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/adClickLog /objects/video_adClickLog.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /categories {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/managerCategories.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /categories.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/categories.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addNewCategory {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/categoryAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /deleteCategory {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/categoryDelete.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /orphanFiles {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/orphanFiles.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /mvideos {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '     rewrite ^(.*)$ /view/managerVideos.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /videos.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videos.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /deleteVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoDelete.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addNewVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /refreshVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoRefresh.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /setStatusVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoStatus.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /reencodeVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoReencode.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /addViewCountVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/videoAddViewCount.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /saveComment {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/commentAddNew.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /comments {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/comments.json/([0-9]+)$ /objects/comments.json.php?video_id=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /login {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/login.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /logoff {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/logoff.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /like {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/like.json.php?like=1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /dislike {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/like.json.php?like=-1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location /update {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/update/?$ /update/update.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /siteConfigurations {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/configurations.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /updateConfig {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /objects/configurationUpdate.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /charts {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /view/charts.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /upload/index.php {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '       rewrite ^(.*)$ /upload/view/index.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    location = /upload/isAdmin {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '      rewrite ^(.*)$ /upload/view/isAdmin.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '   }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '   location = /upload/removeStreamer {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '     rewrite ^(.*)$ /upload/view/removeStreamer.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '   }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/priority {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '     rewrite ^(.*)$ /upload/view/priority.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/status {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '     rewrite ^(.*)$ /upload/view/status.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/serverStatus {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/status.php?serverStatus=1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/upload {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/upload.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/listFiles.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '   rewrite ^(.*)$ /upload/view/listFiles.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/deleteQueue {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/deleteQueue.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/saveConfig {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/saveConfig.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/youtubeDl.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/youtubeDl.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/send.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/send.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/streamers.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/streamers.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/queue.json {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/queue.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/queue {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/view/queue.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/login {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/objects/login.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location = /upload/logoff {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^(.*)$ /upload/objects/logoff.json.php last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location /upload/ {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite "^/getImage/([A-Za-z0-9=/]+)/([A-Za-z0-9]{3})$" /upload/objects/getImage.php?base64Url=$1&format=$2 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite "^/getImageMP4/([A-Za-z0-9=/]+)/([A-Za-z0-9]{3})/([0-9.]+)$" /upload/objects/getImageMP4.php?base64Url=$1&format=$2&time=$3 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location /upload/getSpiritsFromVideo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/getSpiritsFromVideo/([A-Za-z0-9=/]+)/([0-9]+)/([0-9]+)$ /upload/objects/getSpiritsFromVideo.php?base64Url=$1&tileWidth=$2&totalClips=$3  last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  location /upload/getLinkInfo {'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '    rewrite ^/getLinkInfo/([A-Za-z0-9=/]+)$ /upload/objects/getLinkInfo.json.php?base64Url=$1 last;'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '  }'  >> /etc/nginx/conf.d/$FQDN.conf
+echo '}'  >> /etc/nginx/conf.d/$FQDN.conf
 
 #Save and close the file then verify the Nginx for any syntax error with the following command: 
 nginx -t
