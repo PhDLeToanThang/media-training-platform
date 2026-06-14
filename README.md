@@ -16,9 +16,9 @@ AVideo Platform là giải pháp toàn diện cho phép:
 ### Kiến trúc hệ thống
 
 ```
-┌─────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────┐
 │               AVideo Platform Server                 │
-├─────────────────┬─────────────────┬─────────────────┤
+├─────────────────┬──────────────────┬─────────────────┤
 │   Streamer      │    Encoder       │   Live Server   │
 │   (Nginx + PHP) │   (PHP + FFmpeg) │ (Nginx + RTMP)  │
 │                 │                  │                 │
@@ -26,7 +26,7 @@ AVideo Platform là giải pháp toàn diện cho phép:
 │   - Quản lý user│   - Convert      │  - HLS output   │
 │   - Monetization│   - Thumbnail    │  - Adaptive Bit │
 │   - API         │   - Metadata     │  - Record       │
-└─────────────────┴─────────────────┴─────────────────┘
+└─────────────────┴──────────────────┴─────────────────┘
 ```
 
 ## Yêu cầu hệ thống
