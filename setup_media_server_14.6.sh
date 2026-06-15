@@ -734,8 +734,8 @@ cat > /etc/cron.d/avideo <<EOF
 # Update youtube-dl daily
 @daily root /usr/local/bin/youtube-dl -U > /dev/null 2>&1 || true
 
-# Certbot renewal
-0 3 * * * root certbot renew --quiet --post-hook "systemctl reload nginx"
+# Certbot renewal (reload apt nginx, not RTMP)
+0 3 * * * root certbot renew --quiet --post-hook "systemctl reload nginx" 2>&1 | logger -t certbot
 EOF
 
 chmod 644 /etc/cron.d/avideo
@@ -816,9 +816,11 @@ chmod 755 /HLS /HLS/live /HLS/low
 # Replace listen port 443 with 8443 to avoid conflict with Nginx from apt
 sed -i 's/listen 443 ssl/listen 8443 ssl/g' /usr/local/nginx/conf/nginx.conf 2>/dev/null || true
 
-# Create symlink for nginx binary
-mv /usr/sbin/nginx /usr/sbin/nginx.apt 2>/dev/null || true
-cp /usr/local/nginx/sbin/nginx /usr/sbin/nginx
+# DO NOT replace the apt nginx binary - keep both separate:
+#   /usr/sbin/nginx                    -> apt nginx (serves website on 80/443)
+#   /usr/local/nginx/sbin/nginx        -> custom nginx with RTMP (live on 1935/8080/8443)
+# The apt nginx config stays at /etc/nginx/
+# The RTMP nginx config stays at /usr/local/nginx/conf/
 
 systemctl daemon-reload
 systemctl enable nginx-rtmp
@@ -878,8 +880,13 @@ info "  6. Database password: ${dbpass}"
 echo ""
 info "Troubleshooting:"
 info "  Nginx logs:        /var/log/nginx/avideo.*.log"
+info "  Nginx RTMP logs:   /usr/local/nginx/logs/error.log"
 info "  PHP-FPM logs:      /var/log/php${PHP_VERSION}-fpm.log"
 info "  Re-run certbot:    sudo certbot --nginx -d ${FQDN}"
+info ""
+info "Note: Two nginx instances are installed:"
+info "  /usr/sbin/nginx (apt) - serves website on ports 80/443"
+info "  /usr/local/nginx/sbin/nginx (RTMP) - live streaming on ports 1935/8080/8443"
 echo ""
 info "NOTE: Your MySQL root password is stored in /root/.my.cnf"
 info "      Please save these credentials securely!"
