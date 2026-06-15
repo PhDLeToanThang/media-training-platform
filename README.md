@@ -16,18 +16,37 @@ AVideo Platform là giải pháp toàn diện cho phép:
 ### Kiến trúc hệ thống
 
 ```
-┌─────────────────────────────────────────────────────┐
-│               AVideo Platform Server                 │
-├─────────────────┬─────────────────┬─────────────────┤
-│   Streamer      │    Encoder       │   Live Server   │
-│   (Nginx + PHP) │   (PHP + FFmpeg) │ (Nginx + RTMP)  │
-│                 │                  │                 │
-│   - Play video  │   - Encode VOD   │  - RTMP ingest  │
-│   - Quản lý user│   - Convert      │  - HLS output   │
-│   - Monetization│   - Thumbnail    │  - Adaptive Bit │
-│   - API         │   - Metadata     │  - Record       │
-└─────────────────┴─────────────────┴─────────────────┘
+                           WAN (Internet)
+                               │
+                     ┌─────────┴─────────┐
+                     │   HAProxy 2.9     │  (tùy chọn)
+                     │  Load Balancer    │
+                     └─────────┬─────────┘
+                               │
+                     ┌─────────┴─────────┐
+                     │    Ubuntu Server  │
+                     │  ───────────────  │
+                     │  80/443: Apache   │ ← AVideo website
+                     │  1935:    Nginx   │ ← RTMP ingest
+                     │  8080/8443:Nginx  │ ← HLS livestream
+                     └───────────────────┘
+
+ Apache 2.4      →  AVideo Streamer (PHP) + Encoder
+ Nginx + RTMP    →  Live streaming (nhận RTMP, xuất HLS)
+ MariaDB         →  Database
+ FFmpeg          →  Encode video VOD
 ```
+
+### Lưu ý về Dual Web Server
+
+AVideo yêu cầu **Apache** làm web server chính. Script cài Apache trên 80/443 cho website, đồng thời compile Nginx riêng với module RTMP cho livestream (1935/8080/8443):
+
+| Service | Port | Vai trò |
+|---------|------|---------|
+| Apache (systemd) | 80, 443 | Phục vụ website AVideo, xử lý PHP |
+| Nginx RTMP (systemd) | 1935, 8080, 8443 | Nhận RTMP, phát HLS livestream |
+
+Hai service độc lập, không xung đột port. Không được xóa Apache vì AVideo kiểm tra server software khi cài đặt.
 
 ## Yêu cầu hệ thống
 
@@ -43,19 +62,19 @@ AVideo Platform là giải pháp toàn diện cho phép:
 | Thành phần | Phiên bản |
 |------------|-----------|
 | OS | Ubuntu 20.04 hoặc 24.04 LTS |
-| Web Server | Nginx 1.24+ |
-| PHP | 8.3+ |
+| Web Server | Apache 2.4+ (bắt buộc), Nginx RTMP (livestream) |
+| PHP | 8.3+ (libapache2-mod-php) |
 | Database | MariaDB 10.11+ / MySQL 8.0+ |
 | FFmpeg | 6.0+ |
 
 ### Ports cần mở
 | Port | Giao thức | Mục đích |
 |------|-----------|----------|
-| 80 | TCP | HTTP |
-| 443 | TCP | HTTPS |
-| 8080 | TCP | Nginx HTTP (Streamer) |
-| 8443 | TCP | Nginx HTTPS (Live) |
-| 1935 | TCP | RTMP (Livestream) |
+| 80 | TCP | Apache HTTP (website) |
+| 443 | TCP | Apache HTTPS (website) |
+| 8080 | TCP | Nginx RTMP HTTP (livestream) |
+| 8443 | TCP | Nginx RTMP HTTPS (livestream) |
+| 1935 | TCP | RTMP (livestream ingest) |
 | 2053 | TCP | WebSockets |
 
 ## Cài đặt tự động (Automated Install)
@@ -106,13 +125,28 @@ Script sẽ yêu cầu nhập các thông số:
 3. Nhập thông tin database đã tạo
 4. Hoàn tất cấu hình Admin
 
+### 4. Kiến trúc sau cài đặt
+
+| Service | Port | Mục đích | Quản lý |
+|---------|------|----------|---------|
+| Apache | 80, 443 | Website AVideo | `systemctl [start\|stop\|reload] apache2` |
+| Nginx RTMP | 1935, 8080, 8443 | Livestream | `systemctl [start\|stop\|restart] nginx-rtmp` |
+| MariaDB | 3306 | Database | `systemctl [start\|stop\|restart] mariadb` |
+
+> Apache và Nginx RTMP là 2 service riêng biệt, không can thiệp lẫn nhau.
+> Nếu có **HAProxy** phía trước, xem mục hướng dẫn riêng bên dưới.
+
 ## Cài đặt thủ công (Manual Install)
 
-### Step 1: Cài đặt Nginx
+> AVideo yêu cầu **Apache** làm web server chính. Nginx chỉ dùng cho livestream (RTMP).
+
+### Step 1: Cài đặt Apache2
 
 ```bash
-apt-get install -y nginx
-systemctl enable nginx && systemctl start nginx
+apt-get install -y apache2 libapache2-mod-php libapache2-mod-xsendfile
+a2enmod rewrite
+a2enmod xsendfile
+systemctl enable apache2 && systemctl start apache2
 ```
 
 ### Step 2: Cài đặt MariaDB
@@ -128,7 +162,7 @@ mysql_secure_installation
 ```bash
 add-apt-repository -y ppa:ondrej/php
 apt-get update
-apt-get install -y php8.3-fpm php8.3-common php8.3-mbstring \
+apt-get install -y libapache2-mod-php8.3 php8.3-common php8.3-mbstring \
   php8.3-xml php8.3-gd php8.3-intl php8.3-mysql php8.3-cli \
   php8.3-zip php8.3-curl php8.3-bcmath php8.3-soap php8.3-ldap php-ldap
 ```
@@ -163,22 +197,149 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-### Step 7: Cấu hình Nginx
+### Step 7: Cấu hình Apache VirtualHost
 
-Tham khảo file config mẫu trong thư mục `nginx/` hoặc xem hướng dẫn chi tiết tại [AVideo Wiki - Nginx Config](https://github.com/WWBN/AVideo/wiki)
+```bash
+cat > /etc/apache2/sites-available/demo.company.vn.conf <<'EOF'
+<VirtualHost *:80>
+    DocumentRoot "/var/www/demo.company.vn/AVideo"
+    ServerName demo.company.vn
+    ErrorLog ${APACHE_LOG_DIR}/demo_error.log
+    CustomLog ${APACHE_LOG_DIR}/demo_access.log combined
+    <Directory "/var/www/demo.company.vn/AVideo/">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+EOF
+a2ensite demo.company.vn.conf
+systemctl reload apache2
+```
 
 ### Step 8: Cài SSL Let's Encrypt
 
 ```bash
-apt-get install -y certbot python3-certbot-nginx
-certbot --nginx -d demo.company.vn --agree-tos --redirect --hsts
+apt-get install -y certbot python3-certbot-apache
+certbot --apache -d demo.company.vn --agree-tos --redirect --hsts
 ```
+
+## HAProxy — Load Balancer / Reverse Proxy
+
+Nếu có HAProxy đứng trước server AVideo, cấu hình như sau:
+
+### Frontend mapping
+
+```
+Frontend    Port    →    Backend          Port VM
+─────────────────────────────────────────────────
+web         80      →    apache_backend   80
+web         443     →    apache_backend   443
+rtmp_ingest 1935    →    nginx_rtmp       1935
+hls_http    8080    →    nginx_rtmp       8080
+hls_https   8443    →    nginx_rtmp       8443
+```
+
+### Cấu hình HAProxy mẫu
+
+```haproxy
+global
+    log /dev/log local0
+    maxconn 4096
+
+defaults
+    log global
+    mode tcp
+    timeout connect 5000ms
+    timeout client 50000ms
+    timeout server 50000ms
+
+# ---- Website (Apache) ----
+frontend web
+    bind *:80
+    bind *:443
+    mode tcp
+    default_backend apache_servers
+
+backend apache_servers
+    mode tcp
+    server vm1 <IP_AVideo_VM>:80 check
+
+# ---- Livestream RTMP ----
+frontend rtmp
+    bind *:1935
+    mode tcp
+    default_backend rtmp_servers
+
+backend rtmp_servers
+    mode tcp
+    server vm1 <IP_AVideo_VM>:1935 check
+
+# ---- Livestream HLS ----
+frontend hls
+    bind *:8080
+    bind *:8443
+    mode tcp
+    default_backend hls_servers
+
+backend hls_servers
+    mode tcp
+    server vm1 <IP_AVideo_VM]:8080 check
+```
+
+### SSL với HAProxy
+
+**Option A — SSL termination tại HAProxy (khuyến nghị)**:
+```haproxy
+frontend web
+    bind *:80
+    bind *:443 ssl crt /etc/haproxy/certs/yourdomain.pem
+    mode http
+    http-request redirect scheme https unless { ssl_fc }
+    default_backend apache_http
+
+backend apache_http
+    mode http
+    server vm1 <IP_VM>:80 check
+```
+Khi đó backend Apache chạy HTTP (80), HAProxy quản lý SSL. Certbot chạy trên HAProxy, không phải VM.
+
+**Option B — SSL passthrough (xuyên suốt)**:
+```haproxy
+frontend web
+    bind *:443
+    mode tcp
+    default_backend apache_443
+
+backend apache_443
+    mode tcp
+    server vm1 <IP_VM>:443 check
+```
+Certbot chạy trên VM Apache. HAProxy chỉ forward TCP.
+
+### Let's Encrypt với HAProxy
+
+- **Option A (http-01)**: HAProxy cần expose port 80 và forward ACME challenge. Thêm ACL:
+  ```haproxy
+  frontend web
+      bind *:80
+      mode http
+      acl acme_challenge path_beg /.well-known/acme-challenge/
+      use_backend acme_backend if acme_challenge
+      default_backend apache_http
+
+  backend acme_backend
+      mode http
+      server vm1 <IP_VM>:80
+  ```
+- **Option B (dns-01)**: Dùng certbot DNS plugin, HAProxy không cần can thiệp.
+- **Option C**: Cấp chứng chỉ trên VM trước, copy cert lên HAProxy.
 
 ## Cấu hình nâng cao
 
 ### Tối ưu PHP
 
-Các thông số PHP tối ưu cho AVideo trong `/etc/php/8.3/fpm/php.ini`:
+Với Apache + mod_php, sửa file `/etc/php/8.3/apache2/php.ini` (không phải `/etc/php/8.3/fpm/php.ini` — FPM không được dùng khi Apache dùng mod_php):
 
 ```ini
 memory_limit = 1200M
@@ -208,12 +369,12 @@ innodb_large_prefix = ON
 innodb_default_row_format = dynamic
 ```
 
-### Nginx Optimization
+### Apache Optimization
 
-- `client_max_body_size 2G;` - Cho phép upload file lớn
-- `fastcgi_read_timeout 600;` - Timeout cho encode video
-- Enable Gzip compression
-- Cấu hình cache cho static files
+- **PHP module**: Dùng `mod_php` thay vì FPM (đã cài `libapache2-mod-php`)
+- **Upload**: Mặc định Apache cho phép file lớn nếu PHP cấu hình đúng
+- **Gzip**: `a2enmod deflate`
+- **Cache**: `a2enmod expires`, `a2enmod headers`
 
 ### Bảo mật
 
@@ -235,44 +396,64 @@ innodb_default_row_format = dynamic
 
 ## Troubleshooting
 
-### 1. Lỗi "502 Bad Gateway"
+### 1. AVideo báo "You must install Apache" dù đã cài
 
-**Nguyên nhân**: PHP-FPM không chạy hoặc socket sai.
-
-**Kiểm tra**:
+Kiểm tra Apache đang chạy và là web server chính:
 ```bash
-systemctl status php8.3-fpm
-# Kiểm tra socket tồn tại
-ls -la /run/php/php8.3-fpm.sock
+systemctl status apache2
+curl -I http://localhost | grep Server
+# Phải trả về: Server: Apache/2.4.xx
+```
+Nếu đang có Nginx chiếm port 80/443, dừng Nginx:
+```bash
+systemctl stop nginx 2>/dev/null || true
+systemctl disable nginx 2>/dev/null || true
+systemctl restart apache2
 ```
 
-**Fix**:
+### 2. Lỗi "Unknown error" khi Install Now
+
+Nguyên nhân thường do:
+- Database sai thông tin
+- PHP extension thiếu
+- Permission sai trên thư mục cache/tmp
+
 ```bash
-systemctl restart php8.3-fpm
-systemctl reload nginx
+# Kiểm tra PHP extensions cần thiết
+php -m | grep -E "mbstring|gd|mysql|curl|intl|zip|xml|openssl"
+
+# Fix permissions
+chown -R www-data:www-data /var/www/<FQDN>/
+chmod 777 /var/www/<FQDN>/AVideo/vendor/ezyang/htmlpurifier/library/HTMLPurifier/DefinitionCache/Serializer
+chmod 777 /var/www/tmp
+
+# Xóa cache AVideo trước khi cài lại
+rm -rf /var/www/<FQDN>/AVideo/videos/cache/*
+
+# Kiểm tra Apache error log
+tail -100 /var/log/apache2/<FQDN>_error.log
 ```
 
-### 2. Lỗi "File upload too large"
+### 3. Lỗi "File upload too large"
 
-**Fix**:
+Fix:
 ```bash
-# Kiểm tra các giá trị trong php.ini
-grep -E "upload_max_filesize|post_max_size|memory_limit" /etc/php/8.3/fpm/php.ini
-# Sửa nếu cần
-sed -i 's/upload_max_filesize =.*/upload_max_filesize = 4096M/' /etc/php/8.3/fpm/php.ini
-sed -i 's/post_max_size =.*/post_max_size = 4096M/' /etc/php/8.3/fpm/php.ini
-systemctl restart php8.3-fpm
+# PHP dùng mod_php (không phải FPM), sửa php.ini của Apache:
+grep -E "upload_max_filesize|post_max_size|memory_limit" /etc/php/8.3/apache2/php.ini
+sed -i 's/upload_max_filesize =.*/upload_max_filesize = 4096M/' /etc/php/8.3/apache2/php.ini
+sed -i 's/post_max_size =.*/post_max_size = 4096M/' /etc/php/8.3/apache2/php.ini
+systemctl restart apache2
 ```
 
-### 3. Lỗi database connection
+### 4. Lỗi database connection
 
-**Kiểm tra**:
+Kiểm tra:
 ```bash
 mysql -u root -p -e "SHOW DATABASES;"
 mysql -u avideouser -p -e "SHOW DATABASES;"
 ```
 
-**Fix**:
+Fix:
 ```bash
 # Reset quyền
 mysql -u root -p
@@ -280,72 +461,83 @@ GRANT ALL PRIVILEGES ON avideo.* TO 'avideouser'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-### 4. Lỗi SSL / Certbot
+### 5. Lỗi SSL / Certbot với HAProxy
 
-**Kiểm tra**:
+**Nếu HAProxy đứng trước**: certbot trên VM cần port 80/443 forward từ HAProxy.
+
 ```bash
+# Kiểm tra
 certbot certificates
 ```
 
-**Fix**:
+Fix — tạm thời expose VM trực tiếp để cấp chứng chỉ:
 ```bash
-certbot renew --dry-run
-# Hoặc cài mới
-certbot --nginx -d yourdomain.com
+# Cách 1: Forward ACME từ HAProxy (xem mục HAProxy ở trên)
+# Cách 2: Tắt HAProxy tạm thời, chạy certbot trực tiếp
+sudo certbot --apache -d yourdomain.com
+# Cách 3: Dùng DNS challenge (không cần port)
+sudo certbot --apache -d yourdomain.com --preferred-challenges dns
 ```
 
-### 5. Lỗi Livestream không hoạt động
+### 6. Lỗi Nginx RTMP (Livestream) không hoạt động
 
-**Kiểm tra**:
+Kiểm tra:
 ```bash
 systemctl status nginx-rtmp
-# Kiểm tra port RTMP
-netstat -tlnp | grep 1935
+netstat -tlnp | grep -E "1935|8080|8443"
 ```
 
-**Fix**:
+Fix:
 ```bash
 systemctl restart nginx-rtmp
-# Xem log
 tail -f /usr/local/nginx/logs/error.log
 ```
 
-### 6. Lỗi "Allowed memory size exhausted"
-
-**Fix**: Tăng memory_limit trong php.ini lên 2048M hoặc cao hơn.
-
+**Nếu port 1935 bị firewall chặn** — mở trên HAProxy và VM:
 ```bash
-sed -i 's/memory_limit =.*/memory_limit = 2048M/' /etc/php/8.3/fpm/php.ini
-systemctl restart php8.3-fpm
+# Trên VM
+sudo ufw allow 1935/tcp
+# Trên HAProxy — thêm frontend rtmp (xem mục HAProxy)
 ```
 
-### 7. Lỗi encode video chậm
+### 7. Lỗi "Allowed memory size exhausted"
 
-**Nguyên nhân**: CPU yếu hoặc thiếu RAM.
+Fix:
+```bash
+sed -i 's/memory_limit =.*/memory_limit = 2048M/' /etc/php/8.3/apache2/php.ini
+systemctl restart apache2
+```
 
-**Giải pháp**:
+### 8. Lỗi encode video chậm
+
+Nguyên nhân: CPU yếu hoặc thiếu RAM.
+
+Giải pháp:
 - Nâng cấp CPU (khuyến nghị 8 cores+)
 - Tăng RAM (khuyến nghị 16 GB+)
 - Sử dụng Encoder riêng trên server khác
 - Giới hạn số lượng resolutions encode trong plugin CustomizeAdvanced
 
-### 8. Xem log lỗi
+### 9. Xem log lỗi
 
 ```bash
-# Nginx access log
-tail -f /var/log/nginx/avideo.access.log
+# Apache access log
+tail -f /var/log/apache2/<FQDN>_access.log
 
-# Nginx error log
-tail -f /var/log/nginx/avideo.error.log
+# Apache error log
+tail -f /var/log/apache2/<FQDN>_error.log
 
-# PHP-FPM log
-tail -f /var/log/php8.3-fpm.log
+# Nginx RTMP log
+tail -f /usr/local/nginx/logs/error.log
 
 # AVideo system log
 tail -f /var/www/<FQDN>/AVideo/videos/cache/log.log
 
 # MySQL log
 tail -f /var/log/mysql/error.log
+
+# HAProxy log (nếu có)
+tail -f /var/log/haproxy.log
 ```
 
 ## Backup & Restore

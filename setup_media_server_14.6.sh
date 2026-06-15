@@ -1,13 +1,14 @@
 #!/bin/bash
 # =============================================================================
-# AVideo Platform 14.3+ - Automated Deployment Script for Ubuntu 20.04/24.04 LTS
+# AVideo Platform 14.6+ - Automated Deployment Script for Ubuntu 20.04/24.04 LTS
 # =============================================================================
 # This script installs and configures AVideo Platform (Streamer + Encoder + Live)
-# on Ubuntu 20.04 or 24.04 LTS server with Nginx, MariaDB, PHP 8.3, and SSL.
+# on Ubuntu 20.04 or 24.04 LTS with Apache + PHP 8.3, MariaDB, and SSL.
+# Nginx with RTMP module is also compiled for live streaming (ports 1935/8080/8443).
 #
 # Source: https://github.com/WWBN/AVideo
 # Author: Based on work by PhDLeToanThang & WWBN/AVideo community
-# Updated: 2025
+# Updated: 2026
 # =============================================================================
 
 set -e  # Exit on error
@@ -88,12 +89,16 @@ apt-get update -y
 apt-get upgrade -y
 
 # =============================================================================
-# STEP 2: Install Nginx
+# STEP 2: Install Apache2 (required by AVideo web installer)
 # =============================================================================
-info "Step 2: Installing Nginx..."
-apt-get install -y nginx
-systemctl enable nginx
-systemctl start nginx
+info "Step 2: Installing Apache2..."
+apt-get install -y apache2 libapache2-mod-php libapache2-mod-xsendfile
+a2enmod rewrite
+a2enmod xsendfile
+a2enmod expires
+a2enmod headers
+systemctl enable apache2
+systemctl start apache2
 
 # =============================================================================
 # STEP 3: Install MariaDB
@@ -272,424 +277,42 @@ chown www-data:www-data "${WEB_ROOT}/videos"
 chmod 777 "${AVIADO_DIR}/vendor/ezyang/htmlpurifier/library/HTMLPurifier/DefinitionCache/Serializer" 2>/dev/null || true
 
 # =============================================================================
-# STEP 10: Configure Nginx virtual host
+# STEP 10: Configure Apache virtual host
 # =============================================================================
-info "Step 10: Configuring Nginx for ${FQDN}..."
-
-# Remove default site
-rm -f /etc/nginx/sites-enabled/default
-
-cat > "/etc/nginx/sites-available/${FQDN}" << 'NGINXEOF'
-server {
-    listen 80;
-    listen [::]:80;
-    server_name _;
-    root /var/www/html;
-    index index.php index.html index.htm;
-
-    charset utf-8;
-    client_max_body_size 2G;
-
-    access_log  /var/log/nginx/avideo.access.log;
-    error_log   /var/log/nginx/avideo.error.log;
-
-    location ~ \.php$ {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    }
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
-}
-NGINXEOF
-
-# Create config with actual FQDN
-cat > "/etc/nginx/sites-available/${FQDN}" <<EOF
-server {
-    listen 80;
-    listen [::]:80;
-    server_name ${FQDN};
-    root ${AVIADO_DIR};
-    index index.php index.html index.htm;
-
-    charset utf-8;
-    client_max_body_size 2G;
-
-    access_log  /var/log/nginx/avideo.access.log;
-    error_log   /var/log/nginx/avideo.error.log;
-
-    # PHP processing
-    location ~ \.php$ {
-        fastcgi_split_path_info ^(.+\.php)(/.+)$;
-        fastcgi_pass unix:/run/php/php${PHP_VERSION}-fpm.sock;
-        fastcgi_index index.php;
-        include fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
-    }
-
-    # AVideo rewrite rules
-    location / {
-        rewrite ^/\$ /view/ last;
-    }
-
-    location /bootstrap {
-        rewrite ^/bootstrap/(.+)\$ /view/bootstrap/\$1 last;
-    }
-
-    location /js {
-        rewrite ^/js/(.+)\$ /view/js/\$1 last;
-    }
-
-    location /css {
-        rewrite ^/css/(.+)\$ /view/css/\$1 last;
-    }
-
-    location /img {
-        rewrite ^/img/(.+)\$ /view/img/\$1 last;
-    }
-
-    location /page {
-        rewrite ^/page/([0-9]+)/?\$ /view/?page=\$1 last;
-    }
-
-    location /videoOnly {
-        rewrite ^/videoOnly/?\$ /view/?type=video last;
-    }
-
-    location /audioOnly {
-        rewrite ^/audioOnly/?\$ /view/?type=audio last;
-    }
-
-    location = /download {
-        rewrite ^(.*)\$ /view/downloadExternalVideo.php last;
-    }
-
-    location = /downloadNow {
-        rewrite ^(.*)\$ /objects/downloadVideo.php last;
-    }
-
-    location = /getDownloadProgress {
-        rewrite ^(.*)\$ /objects/downloadVideoProgress.php last;
-    }
-
-    location = /about {
-        rewrite ^(.*)\$ /view/about.php last;
-    }
-
-    location = /contact {
-        rewrite ^(.*)\$ /view/contact.php last;
-    }
-
-    location = /sendEmail {
-        rewrite ^(.*)\$ /objects/sendEmail.json.php last;
-    }
-
-    location = /captcha {
-        rewrite ^(.*)\$ /objects/getCaptcha.php last;
-    }
-
-    location /monitor {
-        rewrite ^/monitor/(.+)\$ /objects/ServerMonitor/\$1 last;
-    }
-
-    location /cat {
-        rewrite ^/cat/([A-Za-z0-9-]+)/?\$ /view/?catName=\$1 last;
-    }
-
-    location /video {
-        rewrite ^/video/([A-Za-z0-9-_.]+)/?\$ /view/?videoName=\$1 last;
-    }
-
-    location /videoEmbeded {
-        rewrite ^/videoEmbeded/([A-Za-z0-9-_.]+)/?\$ /view/videoEmbeded.php?videoName=\$1 last;
-    }
-
-    location = /upload {
-        rewrite ^(.*)\$ /view/mini-upload-form/ last;
-    }
-
-    location = /fileUpload {
-        rewrite ^(.*)\$ /view/mini-upload-form/upload.php last;
-    }
-
-    location /uploadStatu {
-        rewrite ^/uploadStatus /view/mini-upload-form/videoConversionStatus.php last;
-    }
-
-    location = /user {
-        rewrite ^(.*)\$ /view/user.php last;
-    }
-
-    location = /users {
-        rewrite ^(.*)\$ /view/managerUsers.php last;
-    }
-
-    location = /users.json {
-        rewrite ^(.*)\$ /objects/users.json.php last;
-    }
-
-    location = /updateUser {
-        rewrite ^(.*)\$ /objects/userUpdate.json.php last;
-    }
-
-    location = /savePhoto {
-        rewrite ^(.*)\$ /objects/userSavePhoto.php last;
-    }
-
-    location = /addNewUser {
-        rewrite ^(.*)\$ /objects/userAddNew.json.php last;
-    }
-
-    location = /deleteUser {
-        rewrite ^(.*)\$ /objects/userDelete.json.php last;
-    }
-
-    location = /recoverPass {
-        rewrite ^(.*)\$ /objects/userRecoverPass.php last;
-    }
-
-    location = /saveRecoverPassword {
-        rewrite ^(.*)\$ /objects/userRecoverPassSave.json.php last;
-    }
-
-    location = /signUp {
-        rewrite ^(.*)\$ /view/signUp.php last;
-    }
-
-    location = /createUser {
-        rewrite ^(.*)\$ /objects/userCreate.json.php last;
-    }
-
-    location = /usersGroups {
-        rewrite ^(.*)\$ /view/managerUsersGroups.php last;
-    }
-
-    location = /usersGroups.json {
-        rewrite ^(.*)\$ /objects/usersGroups.json.php last;
-    }
-
-    location = /addNewUserGroups {
-        rewrite ^(.*)\$ /objects/userGroupsAddNew.json.php last;
-    }
-
-    location = /deleteUserGroups {
-        rewrite ^(.*)\$ /objects/userGroupsDelete.json.php last;
-    }
-
-    location = /ads {
-        rewrite ^(.*)\$ /view/managerAds.php last;
-    }
-
-    location = /addNewAd {
-        rewrite ^(.*)\$ /objects/video_adsAddNew.json.php last;
-    }
-
-    location = /ads.json {
-        rewrite ^(.*)\$ /objects/video_ads.json.php last;
-    }
-
-    location = /deleteVideoAd {
-        rewrite ^(.*)\$ /objects/video_adDelete.json.php last;
-    }
-
-    location /adClickLo {
-        rewrite ^/adClickLog /objects/video_adClickLog.php last;
-    }
-
-    location = /categories {
-        rewrite ^(.*)\$ /view/managerCategories.php last;
-    }
-
-    location = /categories.json {
-        rewrite ^(.*)\$ /objects/categories.json.php last;
-    }
-
-    location = /addNewCategory {
-        rewrite ^(.*)\$ /objects/categoryAddNew.json.php last;
-    }
-
-    location = /deleteCategory {
-        rewrite ^(.*)\$ /objects/categoryDelete.json.php last;
-    }
-
-    location = /orphanFiles {
-        rewrite ^(.*)\$ /view/orphanFiles.php last;
-    }
-
-    location = /mvideos {
-        rewrite ^(.*)\$ /view/managerVideos.php last;
-    }
-
-    location = /videos.json {
-        rewrite ^(.*)\$ /objects/videos.json.php last;
-    }
-
-    location = /deleteVideo {
-        rewrite ^(.*)\$ /objects/videoDelete.json.php last;
-    }
-
-    location = /addNewVideo {
-        rewrite ^(.*)\$ /objects/videoAddNew.json.php last;
-    }
-
-    location = /refreshVideo {
-        rewrite ^(.*)\$ /objects/videoRefresh.json.php last;
-    }
-
-    location = /setStatusVideo {
-        rewrite ^(.*)\$ /objects/videoStatus.json.php last;
-    }
-
-    location = /reencodeVideo {
-        rewrite ^(.*)\$ /objects/videoReencode.json.php last;
-    }
-
-    location = /addViewCountVideo {
-        rewrite ^(.*)\$ /objects/videoAddViewCount.json.php last;
-    }
-
-    location = /saveComment {
-        rewrite ^(.*)\$ /objects/commentAddNew.json.php last;
-    }
-
-    location /comments {
-        rewrite ^/comments.json/([0-9]+)\$ /objects/comments.json.php?video_id=\$1 last;
-    }
-
-    location = /login {
-        rewrite ^(.*)\$ /objects/login.json.php last;
-    }
-
-    location = /logoff {
-        rewrite ^(.*)\$ /objects/logoff.php last;
-    }
-
-    location = /like {
-        rewrite ^(.*)\$ /objects/like.json.php?like=1 last;
-    }
-
-    location = /dislike {
-        rewrite ^(.*)\$ /objects/like.json.php?like=-1 last;
-    }
-
-    location /update {
-        rewrite ^/update/?\$ /update/update.php last;
-    }
-
-    location = /siteConfigurations {
-        rewrite ^(.*)\$ /view/configurations.php last;
-    }
-
-    location = /updateConfig {
-        rewrite ^(.*)\$ /objects/configurationUpdate.json.php last;
-    }
-
-    location = /charts {
-        rewrite ^(.*)\$ /view/charts.php last;
-    }
-
-    # Encoder rewrite rules
-    location = /upload/index.php {
-        rewrite ^(.*)\$ /upload/view/index.php last;
-    }
-
-    location = /upload/isAdmin {
-        rewrite ^(.*)\$ /upload/view/isAdmin.php last;
-    }
-
-    location = /upload/removeStreamer {
-        rewrite ^(.*)\$ /upload/view/removeStreamer.php last;
-    }
-
-    location = /upload/priority {
-        rewrite ^(.*)\$ /upload/view/priority.php last;
-    }
-
-    location = /upload/status {
-        rewrite ^(.*)\$ /upload/view/status.php last;
-    }
-
-    location = /upload/serverStatus {
-        rewrite ^(.*)\$ /upload/view/status.php?serverStatus=1 last;
-    }
-
-    location = /upload/upload {
-        rewrite ^(.*)\$ /upload/view/upload.php last;
-    }
-
-    location = /upload/listFiles.json {
-        rewrite ^(.*)\$ /upload/view/listFiles.json.php last;
-    }
-
-    location = /upload/deleteQueue {
-        rewrite ^(.*)\$ /upload/view/deleteQueue.php last;
-    }
-
-    location = /upload/saveConfig {
-        rewrite ^(.*)\$ /upload/view/saveConfig.php last;
-    }
-
-    location = /upload/youtubeDl.json {
-        rewrite ^(.*)\$ /upload/view/youtubeDl.json.php last;
-    }
-
-    location = /upload/send.json {
-        rewrite ^(.*)\$ /upload/view/send.json.php last;
-    }
-
-    location = /upload/streamers.json {
-        rewrite ^(.*)\$ /upload/view/streamers.json.php last;
-    }
-
-    location = /upload/queue.json {
-        rewrite ^(.*)\$ /upload/view/queue.json.php last;
-    }
-
-    location = /upload/queue {
-        rewrite ^(.*)\$ /upload/view/queue.php last;
-    }
-
-    location = /upload/login {
-        rewrite ^(.*)\$ /upload/objects/login.json.php last;
-    }
-
-    location = /upload/logoff {
-        rewrite ^(.*)\$ /upload/objects/logoff.json.php last;
-    }
-
-    location /upload/ {
-        rewrite "^/getImage/([A-Za-z0-9=/]+)/([A-Za-z0-9]{3})\$" /upload/objects/getImage.php?base64Url=\$1&format=\$2 last;
-        rewrite "^/getImageMP4/([A-Za-z0-9=/]+)/([A-Za-z0-9]{3})/([0-9.]+)\$" /upload/objects/getImageMP4.php?base64Url=\$1&format=\$2&time=\$3 last;
-    }
-
-    location /upload/getSpiritsFromVideo {
-        rewrite "^/getSpiritsFromVideo/([A-Za-z0-9=/]+)/([0-9]+)/([0-9]+)\$" /upload/objects/getSpiritsFromVideo.php?base64Url=\$1&tileWidth=\$2&totalClips=\$3 last;
-    }
-
-    location /upload/getLinkInfo {
-        rewrite "^/getLinkInfo/([A-Za-z0-9=/]+)\$" /upload/objects/getLinkInfo.json.php?base64Url=\$1 last;
-    }
-
-    # Deny access to sensitive files
-    location ~ /\.ht {
-        deny all;
-    }
-
-    location = /configuration.php {
-        deny all;
-    }
-}
+info "Step 10: Configuring Apache for ${FQDN}..."
+
+# Disable default site
+a2dissite 000-default.conf || true
+
+cat > "/etc/apache2/sites-available/${FQDN}.conf" <<EOF
+<VirtualHost *:80>
+    DocumentRoot "${AVIADO_DIR}"
+    ServerName ${FQDN}
+    ServerAdmin webmaster@${FQDN}
+
+    ErrorLog \${APACHE_LOG_DIR}/${FQDN}_error.log
+    CustomLog \${APACHE_LOG_DIR}/${FQDN}_access.log combined
+
+    <Directory "${AVIADO_DIR}/">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    <Directory "${AVIADO_DIR}/upload/">
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
 EOF
 
-# Enable the site
-ln -sf "/etc/nginx/sites-available/${FQDN}" "/etc/nginx/sites-enabled/${FQDN}"
+# Enable the site and mod_rewrite
+a2ensite "${FQDN}.conf"
+a2enmod rewrite
 
-# Test config and reload
-nginx -t && systemctl reload nginx
+# Test config and restart
+apache2ctl configtest && systemctl reload apache2
 
 # =============================================================================
 # STEP 11: Install phpMyAdmin (optional)
@@ -714,12 +337,12 @@ chown -R root:root /var/lib/phpmyadmin
 # =============================================================================
 info "Step 12: Installing Certbot for SSL..."
 
-apt-get install -y certbot python3-certbot-nginx
+apt-get install -y certbot python3-certbot-apache
 
 # Obtain SSL certificate
 info "Obtaining SSL certificate for ${FQDN}..."
-certbot --nginx -d "${FQDN}" --email "${emailcertbot}" --agree-tos --redirect --hsts --non-interactive || {
-    warn "Certbot failed. You can run it manually later: sudo certbot --nginx -d ${FQDN}"
+certbot --apache -d "${FQDN}" --email "${emailcertbot}" --agree-tos --redirect --hsts --non-interactive || {
+    warn "Certbot failed. You can run it manually later: sudo certbot --apache -d ${FQDN}"
 }
 
 # =============================================================================
@@ -734,8 +357,8 @@ cat > /etc/cron.d/avideo <<EOF
 # Update youtube-dl daily
 @daily root /usr/local/bin/youtube-dl -U > /dev/null 2>&1 || true
 
-# Certbot renewal (reload apt nginx, not RTMP)
-0 3 * * * root certbot renew --quiet --post-hook "systemctl reload nginx" 2>&1 | logger -t certbot
+# Certbot renewal
+0 3 * * * root certbot renew --quiet --post-hook "systemctl reload apache2" 2>&1 | logger -t certbot
 EOF
 
 chmod 644 /etc/cron.d/avideo
@@ -755,10 +378,12 @@ if [ ! -d "${BUILD_DIR}/nginx-rtmp-module" ]; then
     git clone https://github.com/arut/nginx-rtmp-module.git "${BUILD_DIR}/nginx-rtmp-module"
 fi
 
-# Get nginx source matching current version
-NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+# Get nginx source version (use default since apt nginx not installed with Apache)
+if command -v nginx &>/dev/null; then
+    NGINX_VERSION=$(nginx -v 2>&1 | grep -oP '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+fi
 if [ -z "${NGINX_VERSION}" ]; then
-    NGINX_VERSION="1.26.0"
+    NGINX_VERSION="1.26.2"
 fi
 
 if [ ! -d "${BUILD_DIR}/nginx-${NGINX_VERSION}" ]; then
@@ -813,14 +438,10 @@ wget -q https://raw.githubusercontent.com/WWBN/AVideo/master/plugin/Live/install
 mkdir -p /HLS/live /HLS/low
 chmod 755 /HLS /HLS/live /HLS/low
 
-# Replace listen port 443 with 8443 to avoid conflict with Nginx from apt
+# Replace listen ports to avoid conflict with Apache on 80/443
+# RTMP nginx handles live streaming only
 sed -i 's/listen 443 ssl/listen 8443 ssl/g' /usr/local/nginx/conf/nginx.conf 2>/dev/null || true
-
-# DO NOT replace the apt nginx binary - keep both separate:
-#   /usr/sbin/nginx                    -> apt nginx (serves website on 80/443)
-#   /usr/local/nginx/sbin/nginx        -> custom nginx with RTMP (live on 1935/8080/8443)
-# The apt nginx config stays at /etc/nginx/
-# The RTMP nginx config stays at /usr/local/nginx/conf/
+sed -i 's/listen 80;/listen 8080;/g' /usr/local/nginx/conf/nginx.conf 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl enable nginx-rtmp
@@ -847,7 +468,7 @@ fi
 # Restart all services
 systemctl restart php${PHP_VERSION}-fpm
 systemctl restart mariadb
-systemctl reload nginx
+systemctl reload apache2
 systemctl start nginx-rtmp 2>/dev/null || true
 
 # =============================================================================
@@ -879,14 +500,14 @@ info "  5. Database user:   ${dbuser}"
 info "  6. Database password: ${dbpass}"
 echo ""
 info "Troubleshooting:"
-info "  Nginx logs:        /var/log/nginx/avideo.*.log"
+info "  Apache logs:       /var/log/apache2/${FQDN}_*.log"
 info "  Nginx RTMP logs:   /usr/local/nginx/logs/error.log"
 info "  PHP-FPM logs:      /var/log/php${PHP_VERSION}-fpm.log"
-info "  Re-run certbot:    sudo certbot --nginx -d ${FQDN}"
+info "  Re-run certbot:    sudo certbot --apache -d ${FQDN}"
 info ""
-info "Note: Two nginx instances are installed:"
-info "  /usr/sbin/nginx (apt) - serves website on ports 80/443"
-info "  /usr/local/nginx/sbin/nginx (RTMP) - live streaming on ports 1935/8080/8443"
+info "Architecture:"
+info "  Apache             - serves AVideo website on ports 80/443"
+info "  Nginx+RTMP         - live streaming on ports 1935/8080/8443"
 echo ""
 info "NOTE: Your MySQL root password is stored in /root/.my.cnf"
 info "      Please save these credentials securely!"
