@@ -1,4 +1,4 @@
-# AVideo Platform 14.3 - Media Server Deployment
+# AVideo Platform 14.6 - Media Server Deployment
 
 > **AVideo Platform** là nền tảng video streaming mã nguồn mở mạnh mẽ, cho phép bạn tự xây dựng hệ thống quản lý video, livestream, và quảng cáo giống như YouTube trên server riêng của mình.
 
@@ -16,9 +16,9 @@ AVideo Platform là giải pháp toàn diện cho phép:
 ### Kiến trúc hệ thống
 
 ```
-┌──────────────────────────────────────────────────────┐
+┌─────────────────────────────────────────────────────┐
 │               AVideo Platform Server                 │
-├─────────────────┬──────────────────┬─────────────────┤
+├─────────────────┬─────────────────┬─────────────────┤
 │   Streamer      │    Encoder       │   Live Server   │
 │   (Nginx + PHP) │   (PHP + FFmpeg) │ (Nginx + RTMP)  │
 │                 │                  │                 │
@@ -26,7 +26,7 @@ AVideo Platform là giải pháp toàn diện cho phép:
 │   - Quản lý user│   - Convert      │  - HLS output   │
 │   - Monetization│   - Thumbnail    │  - Adaptive Bit │
 │   - API         │   - Metadata     │  - Record       │
-└─────────────────┴──────────────────┴─────────────────┘
+└─────────────────┴─────────────────┴─────────────────┘
 ```
 
 ## Yêu cầu hệ thống
@@ -42,7 +42,7 @@ AVideo Platform là giải pháp toàn diện cho phép:
 ### Phần mềm
 | Thành phần | Phiên bản |
 |------------|-----------|
-| OS | Ubuntu 24.04 LTS (khuyến nghị) |
+| OS | Ubuntu 20.04 hoặc 24.04 LTS |
 | Web Server | Nginx 1.24+ |
 | PHP | 8.3+ |
 | Database | MariaDB 10.11+ / MySQL 8.0+ |
@@ -60,7 +60,9 @@ AVideo Platform là giải pháp toàn diện cho phép:
 
 ## Cài đặt tự động (Automated Install)
 
-### 1. Chuẩn bị server Ubuntu 24.04 LTS
+> **Cảnh báo quan trọng**: Script phải chạy với **bash**, không phải sh. Nếu chạy `sudo ./setup_media_server_14.6.sh` mà hệ thống mặc định dùng `sh` (dash), bạn sẽ gặp lỗi `read: Illegal option -e`. Luôn dùng `sudo bash setup_media_server_14.6.sh`.
+
+### 1. Chuẩn bị server Ubuntu 20.04 / 24.04 LTS
 
 ```bash
 # SSH vào server
@@ -77,23 +79,24 @@ apt-get install -y wget curl git
 
 ```bash
 # Tải script
-wget -O deploy_media_server_14.3.sh \
-  https://raw.githubusercontent.com/PhDLeToanThang/media-training-platform/main/deploy_media_server_14.3.sh
+wget -O setup_media_server_14.6.sh \
+  https://raw.githubusercontent.com/PhDLeToanThang/media-training-platform/main/setup_media_server_14.6.sh
 
 # Phân quyền
-chmod +x deploy_media_server_14.3.sh
+chmod +x setup_media_server_14.6.sh
 
-# Chạy với quyền root
-sudo ./deploy_media_server_14.3.sh
+# Chạy với quyền root (LUÔN dùng bash, không dùng sh)
+sudo bash setup_media_server_14.6.sh
 ```
 
+> **Lưu ý**: Phải dùng `bash` thay vì `sh` vì script sử dụng cú pháp Bash (`read -e`, `read -s`, mảng). Chạy bằng `sh` (dash) sẽ báo lỗi `Illegal option`.
+
 Script sẽ yêu cầu nhập các thông số:
-- **FQDN**: Tên miền (VD: demo.company.vn) - **cần trỏ DNS trước**
+- **FQDN**: Tên miền (VD: demo.company.vn) — **cần trỏ DNS trước**
 - **Database name**: Tên database (VD: cdndata)
 - **Database user**: Tên user database (VD: userdata)
 - **Database password**: Mật khẩu database
 - **phpMyAdmin folder**: Tên thư mục phpMyAdmin (VD: phpmyadmin)
-- **CDN Data folder**: Thư mục dữ liệu CDN
 - **Email**: Email cho Let's Encrypt SSL
 
 ### 3. Sau khi cài đặt
@@ -187,16 +190,22 @@ max_input_vars = 5000
 
 ### MariaDB Optimization
 
-File cấu hình `/etc/mysql/mariadb.conf.d/99-avideo.cnf`:
+File cấu hình `/etc/mysql/mariadb.conf.d/99-avideo.cnf` (script tự động chọn theo OS):
 
+**Ubuntu 24.04 (MariaDB 10.11+)**:
 ```ini
 [mysqld]
+max_allowed_packet = 128M
+default-time-zone = +07:00
+```
+
+**Ubuntu 20.04 (MariaDB 10.3)** — thêm legacy InnoDB:
+```ini
 innodb_file_format = Barracuda
+innodb_file_format_max = Barracuda
 innodb_file_per_table = 1
 innodb_large_prefix = ON
-max_allowed_packet = 128M
 innodb_default_row_format = dynamic
-default-time-zone = +07:00
 ```
 
 ### Nginx Optimization
@@ -333,7 +342,7 @@ tail -f /var/log/nginx/avideo.error.log
 tail -f /var/log/php8.3-fpm.log
 
 # AVideo system log
-tail -f /var/www/html/AVideo/videos/cache/log.log
+tail -f /var/www/<FQDN>/AVideo/videos/cache/log.log
 
 # MySQL log
 tail -f /var/log/mysql/error.log
@@ -348,20 +357,21 @@ mysqldump -u root -p avideo > /backup/avideo_$(date +%Y%m%d).sql
 
 ### Backup files
 ```bash
-tar -czf /backup/avideo_files_$(date +%Y%m%d).tar.gz /var/www/html/AVideo/videos
+tar -czf /backup/avideo_files_$(date +%Y%m%d).tar.gz /var/www/<FQDN>/AVideo/videos
 ```
 
 ### Restore
 ```bash
 mysql -u root -p avideo < /backup/avideo_20240101.sql
-tar -xzf /backup/avideo_files_20240101.tar.gz -C /
+tar -xzf /backup/avideo_files_20240101.tar.gz -C /var/www/<FQDN>/AVideo/
+chown -R www-data:www-data /var/www/<FQDN>/AVideo/videos
 ```
 
 ## Upgrade AVideo
 
 ```bash
-cd /var/www/html/AVideo
-git pull
+cd /var/www/<FQDN>/AVideo
+sudo git pull
 # Chạy web installer để update database
 # Truy cập: https://yourdomain.com/update/update.php
 ```

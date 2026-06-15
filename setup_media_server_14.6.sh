@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================================
-# AVideo Platform 14.3 - Automated Deployment Script for Ubuntu 24.04 LTS
+# AVideo Platform 14.3+ - Automated Deployment Script for Ubuntu 20.04/24.04 LTS
 # =============================================================================
 # This script installs and configures AVideo Platform (Streamer + Encoder + Live)
-# on a fresh Ubuntu 24.04 LTS server with Nginx, MariaDB, PHP 8.3, and SSL.
+# on Ubuntu 20.04 or 24.04 LTS server with Nginx, MariaDB, PHP 8.3, and SSL.
 #
 # Source: https://github.com/WWBN/AVideo
 # Author: Based on work by PhDLeToanThang & WWBN/AVideo community
@@ -16,7 +16,7 @@ set -e  # Exit on error
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
@@ -28,8 +28,21 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 OS_VERSION=$(lsb_release -rs 2>/dev/null || echo "unknown")
-if [ "$OS_VERSION" != "24.04" ]; then
-    warn "This script is designed for Ubuntu 24.04 LTS. Detected: $OS_VERSION"
+OS_CODENAME=$(lsb_release -cs 2>/dev/null || echo "unknown")
+
+case "$OS_VERSION" in
+    20.04|24.04)
+        info "Detected Ubuntu $OS_VERSION ($OS_CODENAME) - supported"
+        ;;
+    *)
+        warn "Detected Ubuntu $OS_VERSION. Script targets 20.04/24.04. Proceed with caution."
+        ;;
+esac
+
+# ---- Detect pip break-system-packages support ----
+PIP_BREAK=""
+if pip3 install --help 2>/dev/null | grep -q break-system-packages; then
+    PIP_BREAK="--break-system-packages"
 fi
 
 # =============================================================================
@@ -37,7 +50,7 @@ fi
 # =============================================================================
 echo ""
 info "============================================="
-info "  AVideo Platform 14.3 - Ubuntu 24.04 Setup  "
+info "  AVideo Platform 14.3 - Ubuntu Setup        "
 info "============================================="
 echo ""
 
@@ -55,7 +68,6 @@ WEB_ROOT="/var/www/${FQDN}"
 AVIADO_DIR="${WEB_ROOT}/AVideo"
 ENCODER_DIR="${WEB_ROOT}/AVideo-encoder"
 PHP_VERSION="8.3"
-PHP_FPM_SOCK="php${PHP_VERSION}-fpm"
 
 # Auto-generate MySQL root password
 MYSQL_ROOT_PASS=$(openssl rand -base64 24)
@@ -186,14 +198,20 @@ info "Step 7: Configuring MariaDB for AVideo..."
 
 cat > /etc/mysql/mariadb.conf.d/99-avideo.cnf <<EOF
 [mysqld]
+max_allowed_packet = 128M
+default-time-zone = +07:00
+EOF
+
+# Ubuntu 20.04 (MariaDB 10.3) needs legacy InnoDB settings
+if [ "$OS_VERSION" = "20.04" ]; then
+    cat >> /etc/mysql/mariadb.conf.d/99-avideo.cnf <<EOF
 innodb_file_format = Barracuda
 innodb_file_format_max = Barracuda
 innodb_file_per_table = 1
 innodb_large_prefix = ON
 innodb_default_row_format = dynamic
-max_allowed_packet = 128M
-default-time-zone = +07:00
 EOF
+fi
 
 systemctl restart mariadb
 
@@ -809,10 +827,10 @@ systemctl enable nginx-rtmp
 # STEP 15: Install Python monitoring tools
 # =============================================================================
 info "Step 15: Installing Python monitoring tools..."
-pip3 install glances --break-system-packages 2>/dev/null || pip3 install glances
-pip3 install vosk --break-system-packages 2>/dev/null || pip3 install vosk
-pip3 install youtube-dl --break-system-packages 2>/dev/null || pip3 install youtube-dl
-pip3 install --upgrade youtube-dl --break-system-packages 2>/dev/null || pip3 install --upgrade youtube-dl
+pip3 install glances ${PIP_BREAK} 2>/dev/null || true
+pip3 install vosk ${PIP_BREAK} 2>/dev/null || true
+pip3 install youtube-dl ${PIP_BREAK} 2>/dev/null || true
+pip3 install --upgrade youtube-dl ${PIP_BREAK} 2>/dev/null || true
 
 # =============================================================================
 # STEP 16: Final configuration
